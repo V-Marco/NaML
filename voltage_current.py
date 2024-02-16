@@ -25,9 +25,29 @@ def generate_exponential_current(spike_train):
     current = convolve(spike_train, win, "full")
     return current
 
-def generate_current_inj_matrix(mfr, N_syn, T):
+def generate_synaptic_current_matrix(mfr, N_syn, T):
     matrix = np.zeros((N_syn, T))
     for i in range(N_syn):
         train = inhomogeneous_poisson_through_num_points_for_window_one(generate_pink_noise(num_obs = T, mean = mfr) / 1000)
         matrix[i, :] = generate_exponential_current(train)[:T]
     return matrix
+
+class CurrentInjection:
+    
+    @staticmethod
+    def constant(value, size):
+        return np.ones(size) * value
+    
+    @staticmethod
+    def ramp(start_value, incr_value, time_step, size):
+        out = np.zeros(size)
+        t = 0
+        while t < size:
+            out[t : t + time_step] = start_value
+            t += time_step
+            start_value += incr_value
+        return out
+    
+    @staticmethod
+    def gaussian(mean, std, size):
+        return np.random.normal(mean, std, size)

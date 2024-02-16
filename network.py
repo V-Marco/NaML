@@ -6,6 +6,92 @@ from sklearn.metrics import accuracy_score, roc_auc_score
 def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
+class IFDNN(torch.nn.Module):
+
+    def __init__(self, N_syn, win_size):
+        super().__init__()
+        self.win_size = win_size
+        self.conv1 = torch.nn.Conv1d(in_channels = N_syn, out_channels = 8, kernel_size = self.win_size, padding = "valid")
+        self.conv2 = torch.nn.Conv1d(in_channels = 8, out_channels = 8, kernel_size = self.win_size, padding = "valid")
+        self.conv3 = torch.nn.Conv1d(in_channels = 8, out_channels = 1, kernel_size = self.win_size, padding = "valid")
+        self.spike_conv = torch.nn.Conv1d(in_channels = 1, out_channels = 1, kernel_size = 1, padding = "valid")
+        self.v_conv = torch.nn.Conv1d(in_channels = 1, out_channels = 1, kernel_size = 1, padding = "valid")
+
+    def forward(self, I_input):
+        # Causal padding, so that the kernel uses [... t-1] to predict [t]
+        I_input = torch.nn.functional.pad(I_input, (self.win_size - 1, 0))
+        out = self.conv1(I_input)
+        out = torch.nn.functional.pad(out, (self.win_size - 1, 0))
+        out = self.conv2(out)
+        out = torch.nn.functional.pad(out, (self.win_size - 1, 0))
+        out = self.conv3(out)
+
+        spike_out = self.spike_conv(out)
+        spike_out = torch.nn.functional.logsigmoid(spike_out)
+
+        v_out = self.v_conv(out)
+
+        return v_out, spike_out
+
+class TCNN(torch.nn.Module):
+
+    def __init__(self, in_channels, kernel_size, num_layers, inter_channels = None):
+        super().__init__()
+        self.kernel_size = kernel_size
+        self.conv_layers = torch.nn.ModuleList()
+        if num_layers == 1:
+            self.conv_layers.append(torch.nn.Conv1d(
+                in_channels = in_channels, 
+                out_channels = 1, 
+                kernel_size = kernel_size, 
+                padding = 'valid'))
+        else:
+            self.conv_layers.append(torch.nn.Conv1d(
+                in_channels = in_channels, 
+                out_channels = inter_channels, 
+                kernel_size = kernel_size, 
+                padding = 'valid'))
+            for _ in range(num_layers - 2):
+                self.conv_layers.append(torch.nn.Conv1d(
+                in_channels = inter_channels, 
+                out_channels = inter_channels, 
+                kernel_size = kernel_size, 
+                padding = 'valid'))
+            self.conv_layers.append(torch.nn.Conv1d(
+                in_channels = inter_channels, 
+                out_channels = 1, 
+                kernel_size = kernel_size, 
+                padding = 'valid'))
+        
+        # Post-processing layers
+        self.spike_conv = torch.nn.Conv1d(
+            in_channels = 1, 
+            out_channels = 1, 
+            kernel_size = 1, 
+            padding = "valid")
+        self.v_conv = torch.nn.Conv1d(
+            in_channels = 1, 
+            out_channels = 1, 
+            kernel_size = 1, 
+            padding = "valid")
+    
+    def forward(self, I_input):
+        out = I_input
+        for layer in self.conv_layers:
+            # Causal padding, so that the kernel uses [... t-1] to predict [t]
+            out = torch.nn.functional.pad(out, (self.kernel_size - 1, 0))
+            out = layer(out)
+        
+        # Spike log probs
+        spike_out = self.spike_conv(out)
+        spike_out = torch.nn.functional.logsigmoid(spike_out)
+
+        # Voltage
+        v_out = self.v_conv(out)
+
+        return v_out, spike_out
+        
+
 def train(
         num_epoch, 
         model, 
@@ -60,8 +146,11 @@ def train(
         for t in range(sim_time_ms):
             loss_spike += torch.nn.functional.binary_cross_entropy_with_logits(spike_log_probs[:, t], spike_times_test[:, t])
         
-        acc = accuracy_score(spike_times_test.cpu().detach().numpy().flatten(), spike_log_probs.cpu().detach().numpy().flatten() > 0.5)
-        auc_roc = roc_auc_score(spike_times_test.cpu().detach().numpy().flatten(), np.exp(spike_log_probs.cpu().detach().numpy().flatten()))
+        acc = accuracy_score(spike_times_test.cpu().detach().numpy().flatten(), spike_log_probs.detach().cpu().numpy().flatten() > 0.5)
+        try:
+            auc_roc = roc_auc_score(spike_times_test.cpu().detach().numpy().flatten(), np.exp(spike_log_probs.cpu().detach().numpy().flatten()))
+        except:
+            auc_roc = -1
 
         loss_v = torch.nn.functional.mse_loss(V_out, V_test)
         full_test_loss = loss_spike.float() + loss_v.float()

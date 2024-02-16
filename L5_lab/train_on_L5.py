@@ -14,15 +14,15 @@ from scipy.signal import convolve
 N_syn = 30076
 t_stop = 4000
 win_size = 100
-device = 'cpu'
+device = 'cuda'
 
-train_sim_range = (0, 2)
-test_sim_range = (2, 3)
+train_sim_range = (0, 4800)
+test_sim_range = (4800, 5000)
 
 dt = 0.1
 save_every_ms = 1000
 
-num_passes = 5
+num_passes = 3
 
 def get_I_input(path):
     with open(os.path.join(path, "exc_spike_trains.pickle"), "rb") as file:
@@ -123,8 +123,8 @@ if __name__ == "__main__":
             all_train_loss.extend(train_loss_history)
             all_test_loss.extend(test_loss_history)
     
-    with open("train_loss.pickle", "wb") as file:
-        pickle.dump(all_train_loss, file)
-    with open("test_loss.pickle", "wb") as file:
-        pickle.dump(all_test_loss, file)
-    torch.save(model, "L5_model.pt")
+            with open("train_loss.pickle", "wb") as file:
+                pickle.dump(all_train_loss, file)
+            with open("test_loss.pickle", "wb") as file:
+                pickle.dump(all_test_loss, file)
+            torch.save(model, "L5_model.pt")
