@@ -11,6 +11,8 @@ __pycache__/
 
 # Data
 sims/
+.pt
+.pickle
 
 # Distribution / packaging
 .Python
