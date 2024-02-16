@@ -23,12 +23,12 @@ def train(
     model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr = lr)
     
-    I_train = torch.Tensor(I_train).float()
-    V_train = torch.tensor(V_train).float()
-    spike_times_train = torch.tensor(spike_times_train).float()
-    I_test = torch.Tensor(I_test).float()
-    V_test = torch.tensor(V_test).float()
-    spike_times_test = torch.tensor(spike_times_test).float()
+    I_train = torch.Tensor(I_train).float().to(device)
+    V_train = torch.tensor(V_train).float().to(device)
+    spike_times_train = torch.tensor(spike_times_train).float().to(device)
+    I_test = torch.Tensor(I_test).float().to(device)
+    V_test = torch.tensor(V_test).float().to(device)
+    spike_times_test = torch.tensor(spike_times_test).float().to(device)
 
     train_loss_history = []
     test_loss_history = []
@@ -60,8 +60,8 @@ def train(
         for t in range(sim_time_ms):
             loss_spike += torch.nn.functional.binary_cross_entropy_with_logits(spike_log_probs[:, t], spike_times_test[:, t])
         
-        acc = accuracy_score(spike_times_test.detach().numpy().flatten(), spike_log_probs.detach().numpy().flatten() > 0.5)
-        auc_roc = roc_auc_score(spike_times_test.detach().numpy().flatten(), np.exp(spike_log_probs.detach().numpy().flatten()))
+        acc = accuracy_score(spike_times_test.cpu().detach().numpy().flatten(), spike_log_probs.cpu().detach().numpy().flatten() > 0.5)
+        auc_roc = roc_auc_score(spike_times_test.cpu().detach().numpy().flatten(), np.exp(spike_log_probs.cpu().detach().numpy().flatten()))
 
         loss_v = torch.nn.functional.mse_loss(V_out, V_test)
         full_test_loss = loss_spike.float() + loss_v.float()
